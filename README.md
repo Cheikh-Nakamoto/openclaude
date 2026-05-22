@@ -103,6 +103,49 @@ $env:OPENAI_MODEL="gpt-4o"
 openclaude
 ```
 
+### Client-side Traffic Shaping (Token Bucket)
+
+OpenClaude includes a built-in Token Bucket traffic shaper that protects against `429 Too Many Requests` errors by enforcing a constant, smooth outgoing request rate toward the API — no bursts.
+
+**How it works:**
+- Incoming requests from parallel subagents/tools are buffered in a FIFO queue
+- Tokens are distributed at a constant rate (`~60s / RPM` per request)
+- When a `429` is received, the bucket automatically pauses for the duration of the `Retry-After` header, holding all queued requests until the API is ready
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENCLAUDE_MAX_RPM` | `0` (disabled) | Max requests per minute dispatched to the API |
+| `OPENCLAUDE_BURST_SIZE` | `2` | Initial token count (small burst allowed at startup) |
+| `OPENCLAUDE_QUEUE_MAX` | `50` | Max queued requests before rejection |
+
+macOS / Linux — NVIDIA NIM (40 RPM limit):
+
+```bash
+export CLAUDE_CODE_USE_OPENAI=1
+export OPENAI_BASE_URL=https://integrate.api.nvidia.com/v1
+export OPENAI_API_KEY=nvapi-your-key
+export OPENAI_MODEL=meta/llama-3.1-405b-instruct
+export OPENCLAUDE_MAX_RPM=40
+export OPENCLAUDE_BURST_SIZE=2
+
+openclaude
+```
+
+Windows PowerShell:
+
+```powershell
+$env:CLAUDE_CODE_USE_OPENAI="1"
+$env:OPENAI_BASE_URL="https://integrate.api.nvidia.com/v1"
+$env:OPENAI_API_KEY="nvapi-your-key"
+$env:OPENAI_MODEL="meta/llama-3.1-405b-instruct"
+$env:OPENCLAUDE_MAX_RPM="40"
+$env:OPENCLAUDE_BURST_SIZE="2"
+
+openclaude
+```
+
+Set `OPENCLAUDE_BURST_SIZE=1` to disable burst entirely and enforce a strictly constant rate from the first request.
+
 ### Fastest local Ollama setup
 
 macOS / Linux:

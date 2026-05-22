@@ -34,6 +34,7 @@ import {
 import { isNonCustomOpusModel } from '../../utils/model/model.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
 import { sleep } from '../../utils/sleep.js'
+import { getMaxRpm, checkRateLimit, notifyRateLimited } from '../../utils/rateLimiter.js'
 import type { ThinkingConfig } from '../../utils/thinking.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
@@ -259,6 +260,11 @@ export async function* withRetry<T>(
         client = await getClient()
       }
 
+      const maxRpm = getMaxRpm()
+      if (maxRpm > 0) {
+        await checkRateLimit(maxRpm, options.signal)
+      }
+
       return await operation(client, attempt, retryContext)
     } catch (error) {
       lastError = error
@@ -276,6 +282,14 @@ export async function* withRetry<T>(
             ),
             retryContext,
           );
+      }
+
+      // Notify the token bucket of a 429 so it pauses token distribution
+      // for all concurrently-queued requests, not just this one.
+      // This is the key integration point between withRetry and the traffic shaper.
+      if (error instanceof APIError && error.status === 429 && !isQuotaExhausted(error)) {
+        const retryAfterMs = getRetryAfterMs(error)
+        notifyRateLimited(retryAfterMs, attempt)
       }
       // Fast mode fallback: on 429/529, either wait and retry (short delays)
       // or fall back to standard speed (long delays) to avoid cache thrashing.
